@@ -69,7 +69,35 @@ npm run dev
 
 ### Factor Ordering
 
-The custom factor order is defined in `src/factorOrder.js`. It exports an ordered array of authenticator keys (e.g., `okta_email`, `okta_password`, `phone_number`, `okta_verify`, `google_otp`, `security_question`). Authenticators are rendered in the order they appear in this array. Any authenticator not listed falls to the end in its original server order.
+The custom factor order is defined in `src/factorOrder.js`. It exports a `FACTOR_ORDER` array of authenticator identifiers. Each identifier matches the `data-se` attribute the widget places on the `.authenticator-button` div inside each `.authenticator-row`.
+
+The widget builds these identifiers as:
+- `{authenticatorKey}` — e.g., `okta_email`, `okta_password`
+- `{authenticatorKey}-{methodType}` — e.g., `okta_verify-push`, `okta_verify-totp`
+
+This means you can order at the authenticator level (e.g., `okta_verify` to match all Okta Verify methods) or at the method level (e.g., `okta_verify-push` before `okta_verify-totp`). Any authenticator not matched falls to the end in its original server order.
+
+Common identifiers: `okta_password`, `okta_email`, `phone_number`, `security_question`, `okta_verify-push`, `okta_verify-totp`, `okta_verify-signed_nonce`, `google_otp`, `webauthn`, `duo`, `onprem_mfa`, `rsa_token`.
+
+### Widget DOM Structure for Authenticator Lists
+
+The Gen2 widget renders authenticator selection screens with this structure:
+
+```
+.authenticator-list (.authenticator-verify-list or .authenticator-enroll-list)
+  └── .list-content
+        ├── .authenticator-row
+        │     ├── .authenticator-icon-container
+        │     ├── .authenticator-description
+        │     │     ├── h3.authenticator-label
+        │     │     └── .authenticator-button[data-se="okta_verify-push"]
+        │     │           └── button.select-factor
+        │     ...
+        └── .authenticator-row
+              ...
+```
+
+The `data-se` attribute on `.authenticator-button` is the key identifier used for reordering (built by the widget's `getButtonDataSeAttr()` function in `AuthenticatorUtil.js`).
 
 ### Widget Hooks for Reordering
 
@@ -78,7 +106,7 @@ The Gen2 widget supports `before`/`after` hooks keyed by remediation view names 
 - `select-authenticator-authenticate` — shown when choosing a factor to verify during sign-in
 - `select-authenticator-enroll` — shown when choosing a factor to enroll during registration
 
-In the `after` hook for these views, the prototype queries the rendered authenticator list DOM elements and reorders them to match the configured factor order. This is the supported DOM manipulation approach for Gen2 embedded widgets.
+In the `after` hook for these views, the prototype queries the rendered `.authenticator-row` elements, reads each row's `.authenticator-button[data-se]` value, sorts them per `FACTOR_ORDER`, and re-appends them in the desired order. This is the supported DOM manipulation approach for Gen2 embedded widgets.
 
 ```js
 // Conceptual example (implemented in src/widget.js)

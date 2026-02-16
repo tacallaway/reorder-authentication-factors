@@ -1,72 +1,90 @@
 /**
  * Developer-configurable authentication factor ordering.
  *
- * List authenticator keys in the order you want them presented.
- * Any authenticator returned by the server that is NOT in this list
- * will appear after the listed ones, in its original server order.
+ * List authenticator identifiers in the order you want them presented.
+ * Each entry is matched against the `data-se` attribute the widget places
+ * on the `.authenticator-button` div inside each authenticator row.
  *
- * Common authenticator keys:
- *   okta_password, okta_email, phone_number, okta_verify,
- *   google_otp, security_question, webauthn, duo
+ * The widget builds that attribute as:
+ *   {authenticatorKey}              — e.g. "okta_email", "okta_password"
+ *   {authenticatorKey}-{methodType} — e.g. "okta_verify-push", "okta_verify-totp"
+ *
+ * Matching is done with `startsWith` so you can use either the full
+ * key-method pair (for method-level ordering) or just the authenticator
+ * key (to match all methods of that authenticator as a group).
+ *
+ * Any authenticator not matched by an entry falls to the end, preserving
+ * its original server order.
+ *
+ * Common identifiers:
+ *   okta_password, okta_email, phone_number, security_question,
+ *   okta_verify-push, okta_verify-totp, okta_verify-signed_nonce,
+ *   google_otp, webauthn, duo, onprem_mfa, rsa_token
  */
 export const FACTOR_ORDER = [
-  'okta_email',
-  'okta_password',
-  'phone_number',
-  'okta_verify',
-  'google_otp',
-  'security_question',
+  'okta_verify-push',
+  'okta_verify-totp',
 ];
 
 /**
  * Reorders authenticator DOM elements inside the widget to match FACTOR_ORDER.
  *
- * The widget renders each authenticator option as a
- * `[data-se="authenticator-row"]` element whose inner button carries a
- * `data-se` attribute like `"select-authenticator--okta_email"`.
+ * Each authenticator row (.authenticator-row) contains a `.authenticator-button`
+ * div whose `data-se` attribute identifies the authenticator (and optionally its
+ * method type).  This function sorts the rows so they appear in FACTOR_ORDER.
  *
- * This function is designed to be called from a widget `after` hook on the
- * `select-authenticator-authenticate` or `select-authenticator-enroll` view.
+ * Designed to be called from a widget `after` hook on the
+ * `select-authenticator-authenticate` or `select-authenticator-enroll` views.
  */
 export function reorderAuthenticators() {
-  const container = document.querySelector('[data-se="authenticator-list"]')
-    ?? document.querySelector('.authenticator-list');
+  const container = document.querySelector('.authenticator-list');
 
   if (!container) {
     return;
   }
 
-  const rows = Array.from(
-    container.querySelectorAll('[data-se="authenticator-row"]')
-  );
+  const rows = Array.from(container.querySelectorAll('.authenticator-row'));
 
   if (rows.length === 0) {
     return;
   }
 
-  // Build a priority map: key -> index. Lower index = higher priority.
+  // Build a priority map: entry -> index.  Lower index = higher priority.
   const priority = new Map(FACTOR_ORDER.map((key, i) => [key, i]));
 
-  // Determine each row's authenticator key from its inner select button.
+  // Extract the identifier for each row from its inner .authenticator-button.
   const keyed = rows.map((row) => {
-    const btn = row.querySelector('[data-se^="select-authenticator--"]');
-    const key = btn
-      ? btn.getAttribute('data-se').replace('select-authenticator--', '')
-      : null;
-    return { row, key };
+    const btn = row.querySelector('.authenticator-button[data-se]');
+    const id = btn ? btn.getAttribute('data-se') : null;
+    return { row, id };
   });
 
-  // Sort: known keys by FACTOR_ORDER position; unknown keys keep their
-  // original relative order after all known ones.
-  const fallback = FACTOR_ORDER.length;
-  keyed.sort((a, b) => {
-    const pa = a.key !== null && priority.has(a.key) ? priority.get(a.key) : fallback;
-    const pb = b.key !== null && priority.has(b.key) ? priority.get(b.key) : fallback;
-    return pa - pb;
-  });
+  // Resolve a row's priority.  Try an exact match first; then fall back to
+  // prefix matching so that e.g. "okta_verify" in the order list will match
+  // a row whose id is "okta_verify-push".
+  const resolve = (id) => {
+    if (id === null) {
+      return FACTOR_ORDER.length;
+    }
+    if (priority.has(id)) {
+      return priority.get(id);
+    }
+    for (const [entry, idx] of priority) {
+      if (id.startsWith(entry)) {
+        return idx;
+      }
+    }
+    return FACTOR_ORDER.length;
+  };
 
-  // Re-append in the desired order (moves existing DOM nodes).
+  // Sort: matched entries by FACTOR_ORDER position; unmatched entries keep
+  // their original relative order after all matched ones.
+  keyed.sort((a, b) => resolve(a.id) - resolve(b.id));
+
+  // Re-append in the desired order (moves existing DOM nodes without
+  // creating or destroying elements).
+  const target = container.querySelector('.list-content') ?? container;
   for (const { row } of keyed) {
-    container.appendChild(row);
+    target.appendChild(row);
   }
 }
