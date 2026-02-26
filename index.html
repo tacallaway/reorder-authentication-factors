@@ -19,14 +19,16 @@
       width: 100%;
       max-width: 400px;
     }
-    /* Injected section headings inside the authenticator list */
-    .authenticator-list h3.factor-reorder-heading {
+    /* Injected section headings inside the authenticator list.
+       Widget CSS scopes everything under #okta-sign-in so we must
+       include that ID to beat its specificity. */
+    #okta-sign-in h3.factor-reorder-heading {
       font-size: 14px;
       font-weight: 600;
       color: #1d1d21;
       margin: 0 0 20px;
     }
-    .authenticator-list .factor-reorder-divider {
+    #okta-sign-in .factor-reorder-divider {
       border: none;
       border-top: 1px solid #e0e0e0;
       margin: 4px 0 16px;
